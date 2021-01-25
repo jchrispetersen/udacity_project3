@@ -1,0 +1,368 @@
+#Exploratory Analysis of Prosper Loans
+### J. Chris Dumville
+
+[Prosper Loan data](https://docs.google.com/document/d/e/2PACX-1vRmVtjQrgEPfE3VoiOrdeZ7vLPO_p3KRdb_o-z6E_YJ65tDOiXkwsDpLFKI3lUxbD6UlYtQHXvwiZKx/pub?embedded=true) provided by Udacity
+
+##Info
+Prosper.com is a P2P lending marketplace, and this loan data was last updated 03/11/2014.  With my history as a fraud analyst, I want to use that lens for this analysis to see if I can determine fields that could be used to mitigate future losses.    
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+library(tidyr)
+library(MASS)
+library(scales)
+library(RColorBrewer)
+```
+
+## Introductory Analysis
+
+```{r echo=FALSE, Load_the_Data}
+# Load the Data
+getwd()
+setwd('/Users/chris/Desktop/Udacity files/Project 3')
+# Read the csv file
+prosper = read.csv("prosperLoanData.csv")
+```
+
+Let's start by checking out the data:
+
+```{r echo=FALSE, data_structure}
+names(prosper)
+str(prosper)
+nrow(prosper)
+ncol(prosper)
+
+```
+
+Now that we've seen what we're dealing with, we can take a closer look at the data and see what may have value for our purposes.  
+
+# Univariate Plots Section
+
+Let's start with the ProsperScore, as that sounds like it is some sort of proprietary risk score this lender uses to gauge their loans.  
+
+```{r echo=FALSE,Prosper_Score_Distribution }
+# Score Distribution plot 1
+ggplot(data = prosper, aes(x = ProsperScore)) + 
+        geom_bar(color = "black", fill = '#1F78B4') +
+        xlab("Score") + ggtitle("Prosper Score Distribution")
+```
+The distribution of scores makes sense, it is a bell curve, with both the extremely risky, and extremely non-risky are both rare with most loans falling somewhere in between.  The number of NA is interesting, it could mean that these loans were not scored for a particular reason, maybe acquired from another processor, or the loan score .  
+
+```{r echo=FALSE,Prosper_Status_Distribution }
+# Status Distribution plot 2
+ggplot(data = prosper, aes(x = LoanStatus)) + 
+        geom_bar(color = "black", fill = '#1F78B4') +
+        xlab("Status") + ggtitle("Prosper Status Distribution")
+```
+Here we see some interesting numbers, charge-offs, defaults, current and completed.  These will give us a high level picture of how much fraud there is but just eyeballing this graph, we see a little more than 10K charge-offs, and nearly 40K completed loans.  This is a 20% charge off rate on loans where there is no outstanding risk, but could give us a good indicator of how we'll we expect this loan portfolio to perform over time if loan issuing guidelines have remained constant.  
+
+
+Next let's look at the length of these loans.  
+
+```{r echo=FALSE,Prosper_Term_Distribution }
+# Term Distribution plot 3
+ggplot(data = prosper, aes(x = Term)) + 
+        geom_bar(color = "black", fill = '#1F78B4') +
+        xlab("Term") + ggtitle("Prosper Term Distribution")
+
+```
+
+This shows us that most of our data is in the 36 month or 3 year range, with a subset (15-20%) of the loans in the 60 month, or 5 year range.  This is good to note for when we dive deeper into the charge offs alone.  
+
+Now, let's take a look at the type of rates that users are paying across these terms.  
+
+```{r echo=FALSE,Prosper_Borrower_Rate_Distribution }
+# Borrower Rate Distribution plot 4
+ggplot(data = prosper, aes(x = BorrowerRate)) + 
+        geom_bar(color = '#1F78B4') +
+        xlab("Borrower Rate") + ggtitle("Prosper Borrower Rate Distribution")
+```
+
+Here we can see the range, and frequency of rates, some borrowers get rates as low as 5%, but rates under 15% are rare.  Most are much higher, with greater than 30% being the most common, followed by 35%.
+
+With rates that high, I'd expect to see high yields, so let's look at that next.  
+
+```{r echo=FALSE,Prosper_Lender_Yield_Distribution }
+# Lender Yield Distribution plot 5
+ggplot(data = prosper, aes(x = LenderYield)) + 
+        geom_bar(color = '#1F78B4') +
+        xlab("Lender Yield") + ggtitle("Prosper Lender Yield Distribution")
+```
+
+Those yields are very similar to the rates we saw in the last plot, however, the entire distribution is shifted left along the x axis, signifying that yields are similar, but lower than the borrower rate.  
+
+Next we look at the Employment Status.  
+
+```{r echo=FALSE,Prosper_Employment_Status_Distribution }
+# Employment Distribution plot 6
+ggplot(data = prosper, aes(x = EmploymentStatus)) + 
+        geom_bar(color = "black", fill = '#1F78B4') +
+        xlab("Employment Status") + ggtitle("Prosper Employment Status Distribution")
+```
+
+Here we can see that most are employed, nothing out of the ordinary there, one would expect a lender to require a means of repayment, and a job is the primary form for these customers. 
+
+If these customers are mostly employed, let's see some info about their incomes.  
+
+```{r echo=FALSE,Prosper_Income_Range_Distribution }
+# Income Range Distribution plot 7
+ggplot(data = prosper, aes(x = IncomeRange)) + 
+        geom_bar(color = "black", fill = '#1F78B4') +
+        xlab("Income") + ggtitle("Prosper Income Range Distribution")
+```
+This data seems to be pretty evenly distributed across the board with the median income being around 50,000, Nearly all were below 100,000, and not surprisingly, nearly all were >0.  
+
+Now let's take a look at the debt to income ratio and see how that compares among our borrowers.  
+
+
+```{r echo=FALSE,Prosper_DTI_Distribution }
+# DTI Distribution plot 8
+plot <- ggplot(data = prosper, aes(x = DebtToIncomeRatio)) + 
+        geom_bar(color = "#1F78B4") +
+        xlab("Ratio") + ggtitle("Prosper Debt To Income Ratio Distribution")
+plot + xlim(0,1)
+```
+
+Here we can see a distribution skewed to the left under 25% debt to income.  This again makes sense, as we would expect a lender to want to lend to borrowers who are not already overextended with their debt payments, which would reduce the likelihood of repayment for the loan.  
+
+
+Now let's look at their credit scores, those should be a good indicator of credit worthiness based on prior history with credit products as tracked by the big 3 credit reporting firms, TransUnion, Experian, and Equifax. 
+
+```{r echo=FALSE,Prosper_Credit_Score_Distribution }
+# Credit Score Distribution plot 9
+ggplot(data = prosper, aes(x = CreditScoreRangeUpper)) + 
+        geom_bar(color = "black", fill = '#1F78B4') +
+        xlab("Score") + ggtitle("Prosper Credit Score Distribution")
+```
+
+Interesting distribution here, we have mainly higher credit scores, with the mean around the 700 range, and the vast majority falling above 625.  This makes sense, we would expect a lender to want to lend to those with a track record of having used credit as expected, I imagine if this data was extended to all applicants rather than simply performed loans, the distribution would shift wildly.  
+
+Next let's see where these loans are from.  
+
+```{r echo=FALSE,Prosper_State_Distribution }
+# State Distribution plot 10
+ggplot(data = prosper, aes(x = BorrowerState)) + 
+        geom_bar(color = "black", fill = '#1F78B4') +
+        xlab("State") + ggtitle("Prosper State Distribution")
+```
+Most loans are from CA, not surprising for a start-up that began in San Francisco, but there are loans from nearly all states, with a handful having more than 5000, and many others around the 2500 level.
+
+Next let's take a look at whether or not the borrowers are homeowners.  
+
+```{r echo=FALSE,Prosper_Homeowner_Distribution }
+# Homeowner Distribution plot 11
+ggplot(data = prosper, aes(x = IsBorrowerHomeowner)) + 
+        geom_bar(color = "black", fill = '#1F78B4') +
+        xlab("IsHomeowner") + ggtitle("Prosper Homeowner Distribution")
+```
+Looks like our borrowers are very evenly split when it comes to whether or not they own a home.  
+
+Before we start getting into the bivariate portion of the analysis, let's look at one last visual, the number of loans over time.  First we must change our date into a date format, then let's print the range of that field to see our time-frame.  
+
+```{r}
+# Formatting dates
+prosper$ListingCreationDate <- prosper$ListingCreationDate %>%
+  as.Date(format = '%Y-%m-%d')
+prosper$LoanOriginationDate <- prosper$LoanOriginationDate %>%
+  as.Date(format = '%Y-%m-%d')
+prosper$Year <- as.numeric(format(prosper$LoanOriginationDate,'%Y'))
+range(prosper$ListingCreationDate)
+range(prosper$Year)
+```
+
+```{r echo=FALSE,Prosper_Loan_Growth }
+# Loan Growth plot 12
+ggplot(data = prosper, aes(x = LoanOriginationDate)) + 
+        geom_bar(color = '#1F78B4') +
+        xlab("Time") + ggtitle("Prosper Loan Growth")
+```
+
+Interesting plot here, we see that the volume has been increasing recently, which is a good sign for the company overall.  The other interesting thing here is the volume in 2009, this led me to a Google search that led to articles about a SEC relaunch for their IPO which resulted in the temporary halt in new loan originations.  
+
+
+# Bivariate Plots Section
+
+Now let's dive into the bivariate portion of the analysis.  Here, we can start to drill down into the charge-offs compared to completed loans across other fields. 
+
+A good place to start is with the Prosper Score.  A good risk score should identify the charge off loans at a higher frequency than good loans.  
+
+```{r echo=FALSE,Prosper_Score_vs_Status }
+# Remove all loan statuses but completed and charge-doff
+prosper2 <- filter(prosper, 
+                  LoanStatus == "Completed" | 
+                  LoanStatus == "Chargedoff")
+
+# Prosper Score vs Loan Status plot 13
+ggplot(data = prosper2, aes(x = ProsperScore, fill = LoanStatus)) + 
+        geom_bar(color = "black", position = "stack") +
+        scale_fill_brewer(palette = "Paired") +
+        xlab("Score") + ggtitle("Prosper Score Distribution")
+
+
+```
+
+Very interesting graph here, this illustrates the difficulties in detecting fraud.  Based on these scores, it looks like the higher the number, the lower the risk.  At 9+, we have around 500 charged-off, whereas we have nearly 3 times that number for the other end of the distribution.  The interesting part of this graph is that the majority of the charged-off loans happen in the most common risk scores 4-8, this means the fraud tends to follow the trends of typical borrowers, which hinders detection and leads to increased charged-off loans.  
+
+
+Let's take a look at the number of charge-offs vs completed by year, this will tell us if Prosper is seeing growth or reduction in their charged-off rates.  
+
+```{r echo=FALSE,Prosper_Loan_Growth_vs_status }
+# Loan Growth vs Status plot 14
+ggplot(data = prosper2, aes(x = Year, fill = LoanStatus)) + 
+        geom_bar( position = "stack") + 
+        scale_fill_brewer(palette = "Paired") +
+        xlab("Year") + ggtitle("Prosper Loan Growth")
+```
+Here we can see that Prosper initially struggled with their charge-back rates in first few years until their temporary halt due to the SEC in 2009.  In 2010-2012 the volume normalized, but charge-backs increased yearly.
+
+
+Let's keep going through a few more variables to see if there is anything that seems to be a good charge-back indicator. Loan term is a good one to check next.  
+
+
+```{r echo=FALSE,Prosper_Loan_Term_vs_status }
+# Loan Growth vs Status plot 15
+ggplot(data = prosper2, aes(x = Term, fill = LoanStatus)) + 
+        geom_bar( position = "stack") + 
+        scale_fill_brewer(palette = "Paired") +
+        xlab("Months") + ggtitle("Prosper Loan Term by Status")
+
+```
+
+By volume, we see rates we would expect, short term has very few charge-backs and very little volume, and the most popular term has the most charge-backs.  
+
+Maybe we will see something more insightful by home ownership  
+
+```{r echo=FALSE,Prosper_Homeowner_vs_status }
+# Employment vs Status plot 16
+ggplot(data = prosper2, aes(x = IsBorrowerHomeowner, fill = LoanStatus)) + 
+        geom_bar( position = "stack") + 
+        scale_fill_brewer(palette = "Paired") +
+        xlab("Is Homeowner") + ggtitle("Prosper Homeowner by Status")
+
+
+```
+This field is also split pretty evenly as our overall portfolio is, however it appears there is a slightly higher rate of charge-backs for borrowers that are not homeowners.  
+
+Perhaps income range could provide better insights, let's check that field next.  
+
+```{r echo=FALSE,Prosper_Employment_vs_status }
+# Income Range vs Status plot 17
+ggplot(data = prosper2, aes(x = EmploymentStatus, fill = LoanStatus)) + 
+        geom_bar( position = "stack") + 
+        scale_fill_brewer(palette = "Paired") +
+        xlab("Employment") + ggtitle("Prosper Employment by Status")
+
+
+```
+Once again we see the majority of the charge-backs in our most populated fields employed and full-time.  However, there appears to also be a higher rate among the self employed and not available. 
+
+Area for further analysis: Fields where one can isolate a higher rate of charge-backs can be analyzed with further granularity to determine business rules for risk mitigation. For example, we may want to look at the Prosper scores for not available and self employed to see if a limit on score could be set for those customers to mitigate investor risk.     
+
+Next up we can look at income range.  
+
+```{r echo=FALSE,Prosper_Income_Range_vs_status }
+# Income Range vs Status plot 18
+ggplot(data = prosper2, aes(x = IncomeRange, fill = LoanStatus)) + 
+        geom_bar( position = "stack") + 
+        scale_fill_brewer(palette = "Paired") +
+        xlab("Income Range") + ggtitle("Prosper Income Range by Status")
+
+
+```
+
+The charge-offs here look pretty well distributed, with higher ranges for higher volume values, but nothing that warrants further investigation.  
+
+Next up we can look at credit score. 
+
+
+```{r echo=FALSE,Prosper_Credit_score_vs_status }
+# Credit Score vs Status plot 19
+ggplot(data = prosper2, aes(x = CreditScoreRangeUpper, fill = LoanStatus)) + 
+        geom_bar( position = "stack") + 
+        scale_fill_brewer(palette = "Paired") +
+        xlab("Credit Score") + ggtitle("Prosper Credit Score by Status")
+
+```
+This is interesting, our volume is higher where we see more legitimate activity, but as the scores get lower, the charge-off rate appears to increase.  Those lower credit scores could present an opportunity to reduce rates by focusing on similarities among that subset. 
+
+Last one I want to check on is state, to see if there is a geographic component to the charge-offs.  Based on on prior plot, I would expect to see most in CA.    
+
+```{r echo=FALSE,Prosper_State_vs_status }
+# State vs Status plot 19
+ggplot(data = prosper2, aes(x = BorrowerState, fill = LoanStatus)) + 
+        geom_bar( position = "stack") + 
+        scale_fill_brewer(palette = "Paired") +
+        xlab("State") + ggtitle("Prosper State by Status")
+
+```
+Here we see that CA does in fact have the most charge-offs, but some of the smaller volume states that still have high rates could be further investigated. 
+
+
+# Final Plots:
+
+## Plot 1
+```{r echo=FALSE,Prosper_Score_dist_vs_status }
+# Score Distribution by Status plot 20 
+ggplot(prosper2, 
+       aes(x = ProsperScore, fill = LoanStatus)) +
+       scale_fill_brewer(palette = "Set1") +
+       geom_density(alpha = 0.3) +
+       labs(title = "Score distribution by status", x ="Prosper Score (Risk Unit)", y = "Density (Sample Size Unit)" )
+```
+
+## Plot 2
+
+```{r echo=FALSE,ProsperScore_CreditScore_by_status }
+# plot 21 
+ggplot(prosper2, aes(x = ProsperScore, 
+                     y = DebtToIncomeRatio, 
+                     color=LoanStatus)) +
+  geom_point() +
+  scale_color_manual(values=c("#A6CEE3","#1F78B4")) +
+  labs(title = "Prosper score vs credit score by status", x = "Prosper Score (Risk Unit) ", y ="Debt/Income Ratio (%)")
+```
+
+## Plot 3
+
+
+```{r echo=FALSE,Prosper_Loan_term_histograms }
+# plot 22
+ggplot(prosper2, aes(x = Year, fill = LoanStatus)) +
+  geom_bar( position = "stack") + 
+  geom_histogram(bins = 10) +
+  facet_wrap(~Term, ncol = 1) +
+  scale_fill_brewer(palette = "Paired") +
+  labs(title = "Loan Term Histograms")
+```
+
+# Summary:
+
+
+#### Plot 1
+Plot 1 is of the density of the Prosper Scores by Loan Status.  At our lower risk loans (right), we see higher densities of good loans vs charged-off loans, whereas the further we move to the left, we see that the density changes and our charged-off loans have a higher density.  This graph illustrates the difficulty in trying to detect which loans will be completed vs those that will be charged-off and will end up being a loss to investors as there is significant overlap.  
+
+#### Plot 2
+Plot 2 is a scatter plot of Debt to Income vs Prosper score, with the different colors representing the Loan Status.  This plot represents opportunity for additional charge-offs to be caught, as there are trends such as higher DTIs and particular Prosper scores that could be exploited in the application process to reject these loans before they are funded, thus stopping potential losses across future loans.   
+
+#### Plot 3
+Plot 3 is a histogram for the different loan term lengths.  I split the bar graph to show charge-off loans vs completed loans.  This graph shows us the trends among the different loans and where focus on risk mitigation efforts should go.  36 month will always deserve attention, as it is the highest volume of loans, however the 60 month stand out as they have been offered for only a smaller amount of time, yet still have a high charge-off rate, which means they may be an attractive target, as longer terms would generally yield larger loans and thus may be an area that would require attention.  
+
+
+
+
+  
+# Reflections:
+
+#### Where did I run into difficulties in the analysis?
+I ran into difficulties in this analysis with the lack of detail in the data, there are other metrics, measures, and data points that could lead to a much more fascinating and substantial analysis of this data, but what I was able to surmise was interesting and insightful.  
+
+#### Where did I find successes?
+I found success in looking for fraud and risk patterns among this data set even though there was no clear cut indicator or detils from the application aside to determine ways to capture some of this risk via analysis.  
+
+#### How could the analysis be enriched in future work (e.g. additional data and analyses)?
+With additional data, or further granularization of the data could continue to point to other insights or trends that could be acted upon by Prosper if they are so incentivized.  
+
+
